@@ -48,3 +48,5 @@ htmlcov/
 # PyCharm
 .idea/
 
+# Feeds and schedule
+feed_sched
