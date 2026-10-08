@@ -1,0 +1,9 @@
+services:
+  producer:
+    build: .
+    container_name: public_transit_producer
+    env_file:
+      - .env
+    volumes:
+      - ./feed_sched:/app/feed_sched
+    restart: unless-stopped
