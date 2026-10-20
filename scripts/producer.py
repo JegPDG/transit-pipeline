@@ -4,10 +4,20 @@ from google.transit import gtfs_realtime_pb2
 import os
 from dotenv import load_dotenv
 import pandas as pd
+from confluent_kafka import Producer
+import time
+
 
 load_dotenv()
 
 FEED_URL = os.getenv("FEED_URL")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP")
+TOPIC = "vehicle_positions"
+
+conf = {
+    'bootstrap.servers': KAFKA_BOOTSTRAP
+}
+producer = Producer(conf)
 
 # Fetch Feed
 
@@ -24,19 +34,16 @@ def fetch_feed():
   
   return feed
 
-# print(fetch_feed())
-
-feed = fetch_feed()
-
-flat_vehicle = []
 
 def flatten_vehicle(feed):
+  
+  flat_vehicle = {}
 
   for entity in feed.entity:
     if entity.HasField("vehicle"):
       vehicle = entity.vehicle
 
-      flat_vehicle.append({
+      flat_vehicle[entity.id] = {
         "entity_id": entity.id,
         "vehicle_id": vehicle.vehicle.id,
         "vehicle_label": vehicle.vehicle.label,
@@ -59,21 +66,55 @@ def flatten_vehicle(feed):
 
         "occupancy_status": vehicle.occupancy_status,
         "occupancy_percentage": vehicle.occupancy_percentage,
-      })
+      }
 
-  df = pd.DataFrame(flat_vehicle)
-  print(df)
-
-# flatten_vehicle(feed)
+  return flat_vehicle
 
 
-# def publish_all(feed):
-#   for entity in feed.entity:
-#     if entity.HasField("vehicle"):
-#       flatten_vehicle(feed)
-    
+def delivery_report(err, msg):
+    if err is not None:
+        print(f"Message delivery failed: {err}")
+    else:
+        print(
+            f"Message delivered to {msg.topic()} "
+            f"[partition {msg.partition()}] "
+            f"at offset {msg.offset()}"
+        )
 
-    
 
-# publish_all(feed)
+def publish_all(feed):
 
+  count = 0 
+
+  records = flatten_vehicle(feed)
+  
+  for record in records.values():
+      producer.produce(
+          topic=TOPIC,
+          key=record["entity_id"],
+          value=json.dumps(record),
+          callback=delivery_report
+      )
+
+      producer.poll(0)
+      count += 1
+
+  producer.flush()
+
+  return count
+
+
+
+def main():
+   while True:
+      try:
+        feed = fetch_feed()
+        count = publish_all(feed)
+        time.sleep(20)
+        print(count)
+      except requests.RequestException as err:
+         print(f"Feed fetch failed {err}")
+      time.sleep(20)
+      
+if __name__ == "__main__":
+    main()

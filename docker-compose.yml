@@ -7,3 +7,16 @@ services:
     volumes:
       - ./feed_sched:/app/feed_sched
     restart: unless-stopped
+  
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=localhost:9092
+    ports:
+      - "9092:9092"
