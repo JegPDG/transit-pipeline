@@ -35,40 +35,38 @@ def fetch_feed():
   return feed
 
 
-def flatten_vehicle(feed):
-  
-  flat_vehicle = {}
+def opt(msg, field):
+    return getattr(msg, field) if msg.HasField(field) else None
 
-  for entity in feed.entity:
-    if entity.HasField("vehicle"):
-      vehicle = entity.vehicle
 
-      flat_vehicle[entity.id] = {
-        "entity_id": entity.id,
-        "vehicle_id": vehicle.vehicle.id,
-        "vehicle_label": vehicle.vehicle.label,
+def flatten_vehicle(entity):
 
-        "trip_id":vehicle.trip.trip_id,
-        "trip_start_time":vehicle.trip.start_time,
-        "trip_start_date":vehicle.trip.start_date,
-        "trip_schedule_relationship": vehicle.trip.schedule_relationship,
-        "trip_route_id":vehicle.trip.route_id,
-        "trip_direction_id":vehicle.trip.direction_id,
+  vehicle = entity.vehicle
 
-        "postion_latitude": vehicle.position.latitude,
-        "postion_longitude": vehicle.position.longitude,
-        "postion_bearing": vehicle.position.bearing,
+  return {
+    "entity_id": entity.id,
+    "vehicle_id": opt(vehicle.vehicle, "id"),
+    "vehicle_label": opt(vehicle.vehicle, "label"),
 
-        "current_stop_sequence": vehicle.current_stop_sequence,
-        "current_status": vehicle.current_status,
-        "timestamp": vehicle.timestamp,
-        "stop_id": vehicle.stop_id,
+    "trip_id": opt(vehicle.trip, "trip_id"),
+    "trip_start_time":opt(vehicle.trip, "start_time"),
+    "trip_start_date": opt(vehicle.trip, "start_date"),
+    "trip_schedule_relationship": opt(vehicle.trip, "schedule_relationship"),
+    "trip_route_id": opt(vehicle.trip, "route_id"),
+    "trip_direction_id": opt(vehicle.trip, "direction_id"),
 
-        "occupancy_status": vehicle.occupancy_status,
-        "occupancy_percentage": vehicle.occupancy_percentage,
-      }
+    "postion_latitude": opt(vehicle.position, "latitude"),
+    "postion_longitude": opt(vehicle.position, "longitude"),
+    "postion_bearing": opt(vehicle.position, "bearing"),
 
-  return flat_vehicle
+    "current_stop_sequence": opt(vehicle, "current_stop_sequence"),
+    "current_status": opt(vehicle, "current_status"),
+    "timestamp": opt(vehicle, "timestamp"),
+    "stop_id": opt(vehicle, "stop_id"),
+
+    "occupancy_status": opt(vehicle, "occupancy_status"),
+    "occupancy_percentage": opt(vehicle, "occupancy_percentage"),
+  }
 
 
 def delivery_report(err, msg):
@@ -86,18 +84,21 @@ def publish_all(feed):
 
   count = 0 
 
-  records = flatten_vehicle(feed)
-  
-  for record in records.values():
-      producer.produce(
-          topic=TOPIC,
-          key=record["entity_id"],
-          value=json.dumps(record),
-          callback=delivery_report
-      )
+  for entity in feed.entity:
+    if not entity.HasField("vehicle"):
+        continue
 
-      producer.poll(0)
-      count += 1
+    record = flatten_vehicle(entity)
+
+    producer.produce(
+        topic=TOPIC,
+        key=record["entity_id"],
+        value=json.dumps(record),
+        callback=delivery_report
+    )
+
+    producer.poll(0)
+    count += 1
 
   producer.flush()
 
@@ -110,7 +111,6 @@ def main():
       try:
         feed = fetch_feed()
         count = publish_all(feed)
-        time.sleep(20)
         print(count)
       except requests.RequestException as err:
          print(f"Feed fetch failed {err}")
